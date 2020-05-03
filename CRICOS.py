@@ -16,7 +16,7 @@ with open('CRICOS_output_loc1.csv', 'w', newline='', encoding='utf-8') as f1:
                   'Broad Field', 'Narrow Field', 'Detailed Field', 'Course Level', 'Foundation Studies',
                   'Work Component', 'Course Language', 'Duration (Weeks)', 'Tuition Fee', 'Non Tuition Fee',
                   'Estimated Total Course Cost', 'Work Component Total Hours', 'Work Component Hours/Week',
-                  'Work Component Weeks', 'Course Locations']
+                  'Work Component Weeks', 'Course Locations', 'State']
     writer1 = csv.DictWriter(f1, fieldnames=fieldnames)
     # write column names in csv
     column_name = {}
@@ -77,8 +77,12 @@ with open('CRICOS_output_loc1.csv', 'w', newline='', encoding='utf-8') as f1:
             try:
                 location_form = s.find(summary="This table shows the locations offering this course.")
                 for tr in location_form.find_all('tr')[1:]:
-                    location = tr.find_all('span')[0].string
+                    try:
+                        location = tr.find_all('span')[0].string
+                    except:
+                        print('Cannot find span in location form')
                     results['Course Locations'] = location  # update the dic results to add course locations
+                    results['State'] = location[:3].strip()
                     writer1.writerow(results)
                     print(results)
             except:
