@@ -1,7 +1,6 @@
-from typing import List, Any, Union
-
 import requests
 from bs4 import BeautifulSoup as bs
+from selenium import webdriver
 import lxml
 import csv
 import time
@@ -11,8 +10,9 @@ start_url = 'https://cricos.education.gov.au/Course/CourseDetails.aspx?CourseId=
 count = 0  # count the number of urls
 
 # set up the csv file to write into
-with open('CRICOS_output_loc1.csv', 'w', newline='', encoding='utf-8') as f1:
-    fieldnames = ['url', 'Course Name', 'Course Sector', 'CRICOS Course Code', 'VET National Code', 'Dual Qualification',
+with open('CRICOS_output_loc6.csv', 'w', newline='', encoding='utf-8') as f1:
+    fieldnames = ['url', 'Provider', 'Course Name', 'Course Sector', 'CRICOS Course Code', 'VET National Code',
+                  'Dual Qualification',
                   'Broad Field', 'Narrow Field', 'Detailed Field', 'Course Level', 'Foundation Studies',
                   'Work Component', 'Course Language', 'Duration (Weeks)', 'Tuition Fee', 'Non Tuition Fee',
                   'Estimated Total Course Cost', 'Work Component Total Hours', 'Work Component Hours/Week',
@@ -24,37 +24,33 @@ with open('CRICOS_output_loc1.csv', 'w', newline='', encoding='utf-8') as f1:
         column_name[name] = name
     writer1.writerow(column_name)
 
-# loop
-    x = 160
+    # loop
+    x = 59871
     while x < 103000:
-    # for x in range(6000, 99999):
-    #     time.sleep(random.randint(3, 6))
-        # x = x + 1
         count = count + 1
-        url = start_url + str(x)   # construct the url
+        url = start_url + str(x)  # construct the url
         try:
             r = requests.get(url)  # get page source
         except:
             print('error happens')
+            x = x
             time.sleep(15)
             continue
-        x = x + 1
+        x = x + 1   # need to put back
         s = bs(r.content, 'lxml')
         print("scraping ===" + str(count) + '===' + str(x) + "===" + url)
 
         # find page header <h1>
-        Page_header = s.find_all('h1')[0]   # Page header is the first h1 in the page source
-        Page_header_text = Page_header.get_text()
+        Page_header = s.find_all('h1')[0]  # Page header is the first h1 in the page source
+        Page_header_text = Page_header.string.strip()
 
         # if page deader is 'course search', skip to the next url
         if Page_header_text == 'Course Search':
             print('Invalid course code')
             continue
         else:
-            # print(Page_header_text)
-            # print(s)
 
-            results = {'url': url}
+            results = {'url': url, 'Provider': Page_header_text}
             # scraping the content
             form = s.find(class_='form-horizontal')
             # print(form)
@@ -74,18 +70,54 @@ with open('CRICOS_output_loc1.csv', 'w', newline='', encoding='utf-8') as f1:
                     # print(span[0].string)
 
             # find the locations offering a course
-            try:
-                location_form = s.find(summary="This table shows the locations offering this course.")
-                for tr in location_form.find_all('tr')[1:]:
-                    try:
+
+            # check if more than 10 locations
+            if s.find(class_='gridPager'):   # to check if a pagegrid exists on the page
+                browser = webdriver.Chrome()  # if more then 10 pages, use selenium to scrape
+                browser.get(url)
+                time.sleep(3)
+                # location_table = browser.find_element_by_xpath('//*[@id="ctl00_cphDefaultPage_courseLocationList_gridSearchResults"]/tbody')
+                # print(location_table)
+                course_location = browser.find_element_by_xpath('//*[@id="tabCourseDetails"]/li[2]/a')   # find the course location tab
+                course_location.click();   # click the course location tab
+                time.sleep(1);
+
+                page_no = browser.find_elements_by_xpath(
+                    '//*[@id="ctl00_cphDefaultPage_courseLocationList_gridSearchResults"]/tbody/tr[@class="gridPager"]/td/table/tbody/tr/td')
+                print(len(page_no))
+
+                for i in range(len(page_no)):
+                    soup = bs(browser.page_source, "html.parser")
+                    location_form = soup.find(summary="This table shows the locations offering this course.")
+                    for tr in location_form.find_all('tr')[1:-2]:
                         location = tr.find_all('span')[0].string
+                        results['Course Locations'] = location  # update the dic results to add course locations
+                        results['State'] = location[:3].strip()
+                        writer1.writerow(results)
+                    # button = page.find_element_by_xpath('//*[@id="ctl00_cphDefaultPage_courseLocationList_gridSearchResults"]/tbody/tr[@class="gridPager"]/td/table/tbody/tr/td[2]/a')
+                    try:
+                        button = browser.find_element_by_xpath(
+                            '//*[@id="ctl00_cphDefaultPage_courseLocationList_gridSearchResults"]/tbody/tr[@class="gridPager"]/td/table/tbody/tr/td[{}]/a'.format(
+                                i + 2))
+                        button.click()
+                        time.sleep(1)
                     except:
-                        print('Cannot find span in location form')
-                    results['Course Locations'] = location  # update the dic results to add course locations
-                    results['State'] = location[:3].strip()
-                    writer1.writerow(results)
+                        print('ok, no more pages')
+
+                browser.close()
+            else:
+                try:
+                    location_form = s.find(summary="This table shows the locations offering this course.")
+                    for tr in location_form.find_all('tr')[1:]:
+                        try:
+                            location = tr.find_all('span')[0].string
+                        except:
+                            print('Cannot find span in location form')
+                        results['Course Locations'] = location  # update the dic results to add course locations
+                        results['State'] = location[:3].strip()
+                        writer1.writerow(results)
+                        print(results)
+                except:
+                    print('no course location')
                     print(results)
-            except:
-                print('no course location')
-                print(results)
-                continue
+                    continue
